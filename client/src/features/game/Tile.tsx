@@ -1,5 +1,11 @@
 import { useGameStore, type Skin, type OpenedTile } from './store';
 
+const tileSound = new Audio('/assets/cs2.mp3');
+tileSound.volume = 0.5;
+
+const bamSound = new Audio('/assets/bam-pew.mp3');
+bamSound.volume = 0.7;
+
 interface TileProps {
   index: number;
   skin: Skin;
@@ -14,14 +20,19 @@ export function Tile({ index, skin, opened, disabled, isRevealing }: TileProps) 
   
   const handleClick = async () => {
     if (disabled || opened || status !== 'PLAYING') return;
-    await clickTile(index);
+    tileSound.currentTime = 0;
+    tileSound.play().catch(() => {});
+    const result = await clickTile(index);
+    if (result.ok && result.outcome?.t === 'STOP') {
+      bamSound.currentTime = 0;
+      bamSound.play().catch(() => {});
+    }
   };
   
-  // Format outcome text
   const getOutcomeText = () => {
     if (!opened) return null;
     const { outcome } = opened;
-    if (outcome.t === 'STOP') return 'СТОП';
+    if (outcome.t === 'STOP') return 'БАХ!';
     if (outcome.t === 'ADD') return `+${outcome.amount?.toLocaleString()}`;
     if (outcome.t === 'MULT') return `×${outcome.value}`;
     return null;

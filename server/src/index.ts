@@ -58,8 +58,8 @@ async function main() {
     // Callback when participant joins via chat
     (username) => {
       addParticipant(username);
+      // Emit both the individual event and updated state for immediate UI update
       io.emit('participant:joined', { username });
-      console.log(`Participant joined: ${username}`);
     },
     // Callback for all chat messages
     (username, message) => {

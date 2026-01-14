@@ -76,7 +76,7 @@ let gameState: GameState = {
   bank: 0,
   maxWin: parseInt(process.env.DEFAULT_MAX_WIN || '20000'),
   targetAvg: parseInt(process.env.DEFAULT_TARGET_AVG || '9000'),
-  maxPicks: parseInt(process.env.DEFAULT_MAX_PICKS || '10'),
+  maxPicks: parseInt(process.env.DEFAULT_MAX_PICKS || '14'), // 14 tiles total, no limit
   pickIndex: 0,
   openedTiles: {},
   sequence: [],
@@ -96,9 +96,12 @@ export function addParticipant(username: string): void {
 }
 
 // Get current game state (for broadcasting)
-function getPublicState(): Omit<GameState, 'sequence'> {
+function getPublicState(): Omit<GameState, 'sequence'> & { winnerSelectedAt?: number } {
   const { sequence, ...publicState } = gameState;
-  return publicState;
+  return {
+    ...publicState,
+    winnerSelectedAt: (gameState as any).winnerSelectedAt,
+  };
 }
 
 // Setup socket handlers
@@ -186,6 +189,9 @@ export function setupSocketHandlers(io: Server): void {
         
         gameState.winner = winner;
         gameState.status = 'READY';
+        
+        // Store winner selection timestamp for filtering old messages
+        (gameState as any).winnerSelectedAt = Date.now();
         
         audit('WINNER_PICKED', undefined, undefined, winner);
         io.emit('game:state', getPublicState());
@@ -340,6 +346,114 @@ export function setupSocketHandlers(io: Server): void {
     });
     
     // ============ PLAYER ACTIONS ============
+    
+    // Player picks winner (no auth required for main display)
+    socket.on('player:pickWinner', (cb) => {
+      try {
+        if (gameState.participants.length === 0) {
+          cb?.({ ok: false, error: 'Нет участников' });
+          return;
+        }
+        
+        // Allow reroll from IDLE or READY states
+        if (gameState.status !== 'IDLE' && gameState.status !== 'READY') {
+          cb?.({ ok: false, error: 'Игра уже идёт' });
+          return;
+        }
+        
+        // Random selection (pick a NEW winner different from current if possible)
+        let winner: string;
+        if (gameState.participants.length > 1 && gameState.winner) {
+          // Filter out current winner and pick from remaining
+          const otherParticipants = gameState.participants.filter(p => p !== gameState.winner);
+          const idx = Math.floor(Math.random() * otherParticipants.length);
+          winner = otherParticipants[idx];
+        } else {
+          const idx = Math.floor(Math.random() * gameState.participants.length);
+          winner = gameState.participants[idx];
+        }
+        
+        gameState.winner = winner;
+        gameState.status = 'READY';
+        
+        // Store winner selection timestamp for filtering old messages
+        (gameState as any).winnerSelectedAt = Date.now();
+        
+        audit('WINNER_PICKED_PLAYER', undefined, undefined, winner);
+        io.emit('game:state', getPublicState());
+        cb?.({ ok: true, winner });
+      } catch (e: any) {
+        cb?.({ ok: false, error: e?.message || 'Ошибка' });
+      }
+    });
+    
+    // Player starts round (no auth required for main display)
+    socket.on('player:startRound', (cb) => {
+      try {
+        if (!gameState.winner) {
+          cb?.({ ok: false, error: 'Сначала выберите победителя' });
+          return;
+        }
+        
+        if (gameState.status !== 'READY') {
+          cb?.({ ok: false, error: 'Неверное состояние игры' });
+          return;
+        }
+        
+        gameState.roundId = uuidv4();
+        gameState.bank = 0;
+        gameState.pickIndex = 0;
+        gameState.openedTiles = {};
+        
+        // Generate sequence based on force mode
+        if (gameState.forceMode === 'NEXT_ROUND') {
+          gameState.sequence = generateForcedMaxWinSequence(gameState.maxWin, gameState.maxPicks);
+          gameState.profile = 'jackpot';
+          audit('ROUND_START_FORCED_PLAYER', gameState.roundId, undefined, 'Force mode: NEXT_ROUND');
+          gameState.forceMode = 'NONE';
+        } else {
+          const result = generateSequence(gameState.targetAvg, gameState.maxWin, gameState.maxPicks);
+          gameState.sequence = result.sequence;
+          gameState.profile = result.profile;
+          audit('ROUND_START_PLAYER', gameState.roundId, undefined, `Profile: ${result.profile}`);
+        }
+        
+        gameState.status = 'PLAYING';
+        gameState.skins = getSkins();
+        
+        io.emit('game:state', getPublicState());
+        cb?.({ ok: true, roundId: gameState.roundId });
+      } catch (e: any) {
+        cb?.({ ok: false, error: e?.message || 'Ошибка' });
+      }
+    });
+    
+    // Player resets game after ENDED (no auth required)
+    socket.on('player:resetGame', (cb) => {
+      try {
+        if (gameState.status !== 'ENDED') {
+          cb?.({ ok: false, error: 'Игра ещё не закончена' });
+          return;
+        }
+        
+        gameState.roundId = null;
+        gameState.winner = null;
+        gameState.bank = 0;
+        gameState.pickIndex = 0;
+        gameState.openedTiles = {};
+        gameState.sequence = [];
+        gameState.status = 'IDLE';
+        gameState.profile = null;
+        gameState.participants = [];
+        gameState.skins = getSkins();
+        
+        audit('GAME_RESET_PLAYER');
+        io.emit('game:state', getPublicState());
+        cb?.({ ok: true });
+      } catch (e: any) {
+        cb?.({ ok: false, error: e?.message || 'Ошибка' });
+      }
+    });
     
     // Click tile (player action)
     socket.on('player:clickTile', (payload: { tileIndex: number }, cb) => {

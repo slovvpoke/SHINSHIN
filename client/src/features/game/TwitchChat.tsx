@@ -1,11 +1,48 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGameStore } from './store';
 
+function formatMessage(text: string): React.ReactNode {
+  const mention = '@shinneeshinn';
+  const lowerText = text.toLowerCase();
+  const lowerMention = mention.toLowerCase();
+  
+  if (!lowerText.includes(lowerMention)) {
+    return text;
+  }
+  
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let idx = lowerText.indexOf(lowerMention);
+  
+  while (idx !== -1) {
+    if (idx > lastIndex) {
+      parts.push(text.slice(lastIndex, idx));
+    }
+    parts.push(
+      <span key={idx} className="twitch-chat__mention">
+        {text.slice(idx, idx + mention.length)}
+      </span>
+    );
+    lastIndex = idx + mention.length;
+    idx = lowerText.indexOf(lowerMention, lastIndex);
+  }
+  
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  
+  return parts;
+}
+
 export function TwitchChat() {
   const chatMessages = useGameStore((s) => s.chatMessages);
+  const participants = useGameStore((s) => s.gameState?.participants || []);
   const containerRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  
+  const registeredSet = new Set(participants.map(p => p.toLowerCase()));
+  const isRegistered = (username: string) => registeredSet.has(username.toLowerCase());
   
   // Check if scrolled to bottom
   const checkIfAtBottom = () => {
@@ -57,8 +94,12 @@ export function TwitchChat() {
       >
         {chatMessages.map((msg, i) => (
           <div key={`${msg.ts}-${i}`} className="twitch-chat__message">
-            <span className="twitch-chat__username">{msg.username}</span>
-            <span className="twitch-chat__text">{msg.message}</span>
+            <span className={`twitch-chat__username ${isRegistered(msg.username) ? 'twitch-chat__username--registered' : ''}`}>
+              {msg.username}
+            </span>
+            <span className="twitch-chat__text">
+              {formatMessage(msg.message)}
+            </span>
           </div>
         ))}
       </div>

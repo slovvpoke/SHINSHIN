@@ -1,7 +1,10 @@
+import { useState, useEffect, useRef } from 'react';
 import { Tile } from './Tile';
 import { useGameStore, type Outcome } from './store';
 
-// Format outcome for center display
+const rerollSound = new Audio('/assets/oh-no-cringe.mp3');
+rerollSound.volume = 0.6;
+
 function formatOutcome(outcome: Outcome): { text: string; className: string } {
   switch (outcome.t) {
     case 'ADD':
@@ -9,7 +12,7 @@ function formatOutcome(outcome: Outcome): { text: string; className: string } {
     case 'MULT':
       return { text: `×${outcome.value}`, className: 'center-hub__value--gold' };
     case 'STOP':
-      return { text: 'СТОП', className: 'center-hub__value--red' };
+      return { text: 'БАХ!', className: 'center-hub__value--red' };
     default:
       return { text: '', className: '' };
   }
@@ -19,14 +22,156 @@ export function GameBoard() {
   const gameState = useGameStore((s) => s.gameState);
   const lastRevealedTile = useGameStore((s) => s.lastRevealedTile);
   const lastOutcome = useGameStore((s) => s.lastOutcome);
+  const pickWinner = useGameStore((s) => s.pickWinner);
+  const startRound = useGameStore((s) => s.startRound);
+  const playerResetGame = useGameStore((s) => s.playerResetGame);
+  
+  // In-circle winner selection state
+  const [rollingName, setRollingName] = useState<string | null>(null);
+  const [isRolling, setIsRolling] = useState(false);
+  const [showWinnerActions, setShowWinnerActions] = useState(false);
+  const rollIntervalRef = useRef<number | null>(null);
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
+    };
+  }, []);
   
   if (!gameState) return null;
   
-  const { skins, openedTiles, status, pickIndex, maxPicks, bank, winner } = gameState;
+  const { skins, openedTiles, status, pickIndex, maxPicks, bank, winner, participants } = gameState;
   const tileCount = 14;
+  
+  // Handle center click - pick random winner with animation in circle
+  const handleCenterClick = async () => {
+    if (status !== 'IDLE' || participants.length === 0 || isRolling) return;
+    
+    setIsRolling(true);
+    setShowWinnerActions(false);
+    
+    // Animate through random names in the circle
+    const rollDuration = 2000;
+    const rollInterval = 80;
+    let elapsed = 0;
+    
+    rollIntervalRef.current = window.setInterval(() => {
+      const randomIdx = Math.floor(Math.random() * participants.length);
+      setRollingName(participants[randomIdx]);
+      elapsed += rollInterval;
+      
+      if (elapsed >= rollDuration) {
+        if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
+      }
+    }, rollInterval);
+    
+    // Actually pick winner after animation
+    setTimeout(async () => {
+      if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
+      const result = await pickWinner();
+      if (result.ok && result.winner) {
+        setRollingName(result.winner);
+      }
+      setIsRolling(false);
+    }, rollDuration);
+  };
+  
+  // Handle click on winner name in READY state - show actions
+  const handleWinnerNameClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (status === 'READY' || (!isRolling && rollingName)) {
+      setShowWinnerActions(!showWinnerActions);
+    }
+  };
+  
+  // Handle start game
+  const handleStartGame = async () => {
+    const result = await startRound();
+    if (result.ok) {
+      setShowWinnerActions(false);
+      setRollingName(null);
+    }
+  };
+  
+  // Handle reset after game ends
+  const handleResetGame = async () => {
+    if (status !== 'ENDED') return;
+    const result = await playerResetGame();
+    if (result.ok) {
+      setRollingName(null);
+      setShowWinnerActions(false);
+    }
+  };
+  
+  const handleReroll = async () => {
+    setShowWinnerActions(false);
+    setIsRolling(true);
+    
+    rerollSound.currentTime = 0;
+    rerollSound.play().catch(() => {});
+    
+    const rollDuration = 1500;
+    const rollInterval = 80;
+    let elapsed = 0;
+    
+    rollIntervalRef.current = window.setInterval(() => {
+      const randomIdx = Math.floor(Math.random() * participants.length);
+      setRollingName(participants[randomIdx]);
+      elapsed += rollInterval;
+      
+      if (elapsed >= rollDuration) {
+        if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
+      }
+    }, rollInterval);
+    
+    setTimeout(async () => {
+      if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
+      const result = await pickWinner();
+      if (result.ok && result.winner) {
+        setRollingName(result.winner);
+      }
+      setIsRolling(false);
+    }, rollDuration);
+  };
   
   // Center hub content based on status
   const renderCenterContent = () => {
+    // Show rolling animation
+    if (isRolling && rollingName) {
+      return (
+        <>
+          <div className="center-hub__subtitle">Выбираем...</div>
+          <div className="center-hub__winner center-hub__winner--rolling">{rollingName}</div>
+        </>
+      );
+    }
+    
+    // Show selected winner before game starts (after roll, before READY)
+    if (!isRolling && rollingName && status === 'IDLE') {
+      return (
+        <>
+          <div className="center-hub__subtitle">Победитель</div>
+          <div 
+            className="center-hub__winner center-hub__winner--clickable"
+            onClick={handleWinnerNameClick}
+          >
+            {rollingName}
+          </div>
+          {showWinnerActions && (
+            <div className="center-hub__actions">
+              <button className="center-hub__btn center-hub__btn--start" onClick={handleStartGame}>
+                Начать
+              </button>
+              <button className="center-hub__btn center-hub__btn--reroll" onClick={handleReroll}>
+                Рерол
+              </button>
+            </div>
+          )}
+        </>
+      );
+    }
+    
     // Show outcome animation when tile is clicked
     if (lastOutcome && status === 'PLAYING') {
       const { text, className } = formatOutcome(lastOutcome);
@@ -43,15 +188,29 @@ export function GameBoard() {
       case 'IDLE':
         return (
           <>
-            <div className="center-hub__title">MINES</div>
-            <div className="center-hub__subtitle">GIVEAWAY</div>
+            <div className="center-hub__title">SHINNEE</div>
           </>
         );
       case 'READY':
         return (
           <>
             <div className="center-hub__subtitle">Играет</div>
-            <div className="center-hub__winner">{winner}</div>
+            <div 
+              className="center-hub__winner center-hub__winner--clickable"
+              onClick={handleWinnerNameClick}
+            >
+              {winner}
+            </div>
+            {showWinnerActions && (
+              <div className="center-hub__actions">
+                <button className="center-hub__btn center-hub__btn--start" onClick={handleStartGame}>
+                  Начать
+                </button>
+                <button className="center-hub__btn center-hub__btn--reroll" onClick={handleReroll}>
+                  Рерол
+                </button>
+              </div>
+            )}
           </>
         );
       case 'PLAYING':
@@ -68,15 +227,21 @@ export function GameBoard() {
         return (
           <>
             <div className="center-hub__subtitle">Выигрыш</div>
-            <div className="center-hub__value center-hub__value--gold">
+            <div 
+              className="center-hub__value center-hub__value--gold center-hub__value--clickable"
+              onClick={handleResetGame}
+            >
               {bank.toLocaleString()}
             </div>
+            <div className="center-hub__hint">Нажми для новой игры</div>
           </>
         );
       default:
         return null;
     }
   };
+  
+  const isCenterClickable = status === 'IDLE' && participants.length > 0 && !isRolling && !rollingName;
   
   return (
     <>
@@ -86,7 +251,10 @@ export function GameBoard() {
       </section>
       
       {/* Center hub */}
-      <div className="center-hub">
+      <div 
+        className={`center-hub ${isCenterClickable ? 'center-hub--clickable' : ''}`}
+        onClick={isCenterClickable ? handleCenterClick : undefined}
+      >
         {renderCenterContent()}
       </div>
       

@@ -11,18 +11,18 @@ export interface Outcome {
 
 export type RoundProfile = 'low' | 'normal' | 'jackpot';
 
-// Stop probability curves (per pick index 0-9)
+// Stop probability curves (per pick index 0-13 for 14 tiles)
 const STOP_CURVES = {
-  normal: [0.06, 0.07, 0.08, 0.10, 0.12, 0.14, 0.17, 0.20, 0.24, 0.28],
-  low: [0.12, 0.13, 0.14, 0.16, 0.18, 0.20, 0.23, 0.26, 0.30, 0.34], // +0.06 each, cap 0.60
-  jackpot: [0.02, 0.03, 0.04, 0.06, 0.08, 0.10, 0.13, 0.16, 0.20, 0.24], // -0.04 each, cap 0.60
+  normal: [0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10, 0.12, 0.14, 0.16, 0.18, 0.20, 0.22, 0.25],
+  low: [0.08, 0.09, 0.10, 0.11, 0.12, 0.14, 0.16, 0.18, 0.20, 0.22, 0.25, 0.28, 0.30, 0.35],
+  jackpot: [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.10, 0.12, 0.14, 0.16, 0.18, 0.20],
 };
 
-// Multiplier probability curves
+// Multiplier probability curves (per pick index 0-13)
 const MULT_CURVES = {
-  normal: [0.02, 0.02, 0.02, 0.025, 0.03, 0.03, 0.035, 0.04, 0.045, 0.05],
-  low: [0.01, 0.01, 0.015, 0.02, 0.02, 0.025, 0.03, 0.03, 0.035, 0.04],
-  jackpot: [0.05, 0.05, 0.05, 0.055, 0.06, 0.06, 0.065, 0.07, 0.075, 0.08], // +0.03, cap 0.25
+  normal: [0.02, 0.02, 0.02, 0.025, 0.03, 0.03, 0.035, 0.035, 0.04, 0.04, 0.045, 0.045, 0.05, 0.05],
+  low: [0.01, 0.01, 0.015, 0.015, 0.02, 0.02, 0.025, 0.025, 0.03, 0.03, 0.035, 0.035, 0.04, 0.04],
+  jackpot: [0.04, 0.04, 0.05, 0.05, 0.055, 0.055, 0.06, 0.06, 0.065, 0.065, 0.07, 0.07, 0.075, 0.08],
 };
 
 // Multiplier weights
@@ -39,7 +39,7 @@ export function selectProfile(): RoundProfile {
   return 'jackpot';
 }
 
-// Generate base ADD amounts
+// Generate base ADD amounts with natural variance
 function generateBaseAddAmounts(
   targetAvg: number,
   maxPicks: number,
@@ -48,16 +48,38 @@ function generateBaseAddAmounts(
   const amounts: number[] = [];
   const basePerPick = targetAvg / maxPicks;
   
+  // Use different distribution strategies for variety
+  const strategy = Math.random();
+  
   for (let i = 0; i < maxPicks; i++) {
-    // Add some variance
-    const variance = profile === 'jackpot' 
-      ? 0.5 + Math.random() * 1.0  // Higher variance for jackpot
-      : profile === 'low'
-        ? 0.3 + Math.random() * 0.5 // Lower variance for low
-        : 0.4 + Math.random() * 0.8; // Normal variance
+    let variance: number;
     
-    const amount = Math.round(basePerPick * variance);
+    if (strategy < 0.33) {
+      // Strategy 1: Exponential distribution - some very low, some high
+      const exp = -Math.log(Math.random() + 0.01);
+      variance = Math.min(exp * 0.5, 3.0);
+    } else if (strategy < 0.66) {
+      // Strategy 2: Bimodal - either low or high
+      variance = Math.random() < 0.4 
+        ? 0.1 + Math.random() * 0.4  // Low values
+        : 1.2 + Math.random() * 1.5; // High values
+    } else {
+      // Strategy 3: Wide uniform with profile-based range
+      variance = profile === 'jackpot' 
+        ? 0.2 + Math.random() * 2.5  // Wide range for jackpot
+        : profile === 'low'
+          ? 0.1 + Math.random() * 0.8 // Tighter low range
+          : 0.15 + Math.random() * 2.0; // Normal with good spread
+    }
+    
+    const amount = Math.max(5, Math.round(basePerPick * variance));
     amounts.push(amount);
+  }
+  
+  // Shuffle to avoid patterns
+  for (let i = amounts.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [amounts[i], amounts[j]] = [amounts[j], amounts[i]];
   }
   
   return amounts;
@@ -85,6 +107,9 @@ export function generateSequence(
   let runningTotal = 0;
   let hasStopped = false;
   
+  // Minimum guaranteed balance before STOP can occur
+  const MIN_GUARANTEED_BALANCE = 2000;
+  
   for (let i = 0; i < maxPicks; i++) {
     if (hasStopped) {
       // After stop, remaining outcomes are irrelevant but we generate them anyway
@@ -97,7 +122,8 @@ export function generateSequence(
     
     const r = Math.random();
     
-    if (r < stopProb) {
+    // Only allow STOP if balance is at least MIN_GUARANTEED_BALANCE
+    if (r < stopProb && runningTotal >= MIN_GUARANTEED_BALANCE) {
       // STOP outcome
       sequence.push({ t: 'STOP' });
       hasStopped = true;
@@ -143,49 +169,124 @@ export function generateForcedMaxWinSequence(
 ): Outcome[] {
   const sequence: Outcome[] = [];
   
-  // Strategy: Small adds early, big multipliers in middle, final add to reach maxWin exactly
-  const earlyPicks = Math.floor(maxPicks * 0.4);
-  const midPicks = Math.floor(maxPicks * 0.3);
+  // Strategy: Realistic distribution with varied amounts, occasional multipliers
+  // and natural looking progression to maxWin
   
-  // Early: small adds to build base
-  const basePerPick = Math.floor(maxWin / (maxPicks * 2));
-  for (let i = 0; i < earlyPicks; i++) {
-    sequence.push({ t: 'ADD', amount: basePerPick + Math.floor(Math.random() * basePerPick) });
+  // Decide on multiplier positions (1-2 multipliers scattered naturally)
+  const multPositions: number[] = [];
+  const numMults = Math.random() > 0.6 ? 2 : 1;
+  
+  // Place multipliers in middle third of the game
+  const midStart = Math.floor(maxPicks * 0.25);
+  const midEnd = Math.floor(maxPicks * 0.7);
+  
+  for (let m = 0; m < numMults; m++) {
+    let pos: number;
+    do {
+      pos = midStart + Math.floor(Math.random() * (midEnd - midStart));
+    } while (multPositions.includes(pos));
+    multPositions.push(pos);
   }
   
-  // Middle: one or two multipliers
-  sequence.push({ t: 'MULT', value: 2.0 });
-  for (let i = 1; i < midPicks; i++) {
-    if (i === midPicks - 1 && Math.random() > 0.5) {
-      sequence.push({ t: 'MULT', value: 1.5 });
+  // Calculate expected multiplier effect
+  let expectedMultiplier = 1;
+  const multValues: number[] = [];
+  for (let i = 0; i < numMults; i++) {
+    const v = Math.random() < 0.8 ? 1.5 : 2.0;
+    multValues.push(v);
+    expectedMultiplier *= v;
+  }
+  
+  // Work backwards to find base amount needed before multipliers
+  // We want final result to be maxWin
+  const preMultTarget = Math.floor(maxWin / expectedMultiplier);
+  const postMultTarget = maxWin;
+  
+  // Count ADD picks before first mult and after last mult
+  const sortedMults = [...multPositions].sort((a, b) => a - b);
+  const firstMult = sortedMults[0];
+  const lastMult = sortedMults[sortedMults.length - 1];
+  
+  const picksBeforeMults = firstMult;
+  const picksBetweenMults = numMults > 1 ? (lastMult - firstMult - 1) : 0;
+  const picksAfterMults = maxPicks - lastMult - 1;
+  
+  // Distribute amounts with natural variance
+  const generateVariedAmounts = (target: number, count: number): number[] => {
+    if (count <= 0) return [];
+    const amounts: number[] = [];
+    const baseAmount = Math.floor(target / count);
+    
+    let remaining = target;
+    for (let i = 0; i < count - 1; i++) {
+      // Add variance: 40% to 160% of base
+      const variance = 0.4 + Math.random() * 1.2;
+      const amount = Math.floor(baseAmount * variance);
+      const cappedAmount = Math.min(amount, remaining - (count - i - 1) * Math.floor(baseAmount * 0.3));
+      amounts.push(Math.max(0, cappedAmount));
+      remaining -= cappedAmount;
+    }
+    // Last amount gets the remainder
+    amounts.push(Math.max(0, remaining));
+    
+    // Shuffle to make it less predictable
+    for (let i = amounts.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [amounts[i], amounts[j]] = [amounts[j], amounts[i]];
+    }
+    
+    return amounts;
+  };
+  
+  // Generate amounts for before multipliers
+  const preMultAmounts = generateVariedAmounts(preMultTarget, picksBeforeMults + picksBetweenMults);
+  
+  // Generate amounts for after multipliers (smaller since already multiplied)
+  const postMultNeed = maxWin - Math.floor(preMultTarget * expectedMultiplier);
+  const postMultAmounts = generateVariedAmounts(Math.max(0, postMultNeed), picksAfterMults);
+  
+  // Build sequence
+  let preMultIdx = 0;
+  let postMultIdx = 0;
+  let multIdx = 0;
+  
+  for (let i = 0; i < maxPicks; i++) {
+    if (multPositions.includes(i)) {
+      sequence.push({ t: 'MULT', value: multValues[multIdx] });
+      multIdx++;
+    } else if (i < lastMult) {
+      // Before or between multipliers
+      const amount = preMultAmounts[preMultIdx] || Math.floor(1000 + Math.random() * 2000);
+      sequence.push({ t: 'ADD', amount });
+      preMultIdx++;
     } else {
-      sequence.push({ t: 'ADD', amount: basePerPick });
+      // After all multipliers
+      const amount = postMultAmounts[postMultIdx] || Math.floor(500 + Math.random() * 1500);
+      sequence.push({ t: 'ADD', amount });
+      postMultIdx++;
     }
   }
   
-  // Late: adds to approach maxWin
-  const remainingPicks = maxPicks - earlyPicks - midPicks;
-  for (let i = 0; i < remainingPicks - 1; i++) {
-    sequence.push({ t: 'ADD', amount: basePerPick * 2 });
-  }
-  
-  // Final pick: will be adjusted to hit maxWin exactly
-  sequence.push({ t: 'ADD', amount: 0 }); // Placeholder, will be recalculated
-  
-  // Calculate running total and adjust final
+  // Final pass: recalculate and adjust last ADD to hit maxWin exactly
   let runningTotal = 0;
-  for (let i = 0; i < sequence.length - 1; i++) {
+  let lastAddIndex = -1;
+  
+  for (let i = 0; i < sequence.length; i++) {
     const outcome = sequence[i];
     if (outcome.t === 'ADD') {
       runningTotal += outcome.amount || 0;
+      lastAddIndex = i;
     } else if (outcome.t === 'MULT') {
       runningTotal = Math.floor(runningTotal * (outcome.value || 1));
     }
   }
   
-  // Set final ADD to reach exactly maxWin
-  const finalAmount = Math.max(0, maxWin - runningTotal);
-  sequence[sequence.length - 1] = { t: 'ADD', amount: finalAmount };
+  // Adjust to hit maxWin exactly
+  if (lastAddIndex >= 0 && runningTotal !== maxWin) {
+    const diff = maxWin - runningTotal;
+    const currentAmount = sequence[lastAddIndex].amount || 0;
+    sequence[lastAddIndex] = { t: 'ADD', amount: Math.max(0, currentAmount + diff) };
+  }
   
   return sequence;
 }
@@ -212,38 +313,94 @@ export function forceSequenceToMaxWin(
     }
   }
   
-  // Strategy: if bank is small, insert multiplier, then final add to maxWin
-  if (remaining >= 2 && currentBank < maxWin * 0.3) {
-    // Insert x2 multiplier
-    sequence[currentPickIndex] = { t: 'MULT', value: 2.0 };
+  const deficit = maxWin - currentBank;
+  
+  // Strategy: Natural distribution with possible multiplier if bank is small
+  // Insert multiplier only if bank is very small and we have enough remaining picks
+  const needMultiplier = remaining >= 3 && currentBank < maxWin * 0.2;
+  
+  if (needMultiplier) {
+    // Place multiplier somewhere in first half of remaining picks
+    const multPos = currentPickIndex + Math.floor(Math.random() * Math.floor(remaining / 2));
+    const multValue = Math.random() < 0.7 ? 1.5 : 2.0;
+    sequence[multPos] = { t: 'MULT', value: multValue };
     
-    // Recalculate bank after mult
-    const bankAfterMult = Math.floor(currentBank * 2.0);
+    // Calculate how much we need before and after the multiplier
+    const picksBeforeMult = multPos - currentPickIndex;
+    const picksAfterMult = maxPicks - multPos - 1;
     
-    // Set next outcomes to small adds, final to reach maxWin
-    for (let i = currentPickIndex + 1; i < maxPicks - 1; i++) {
-      sequence[i] = { t: 'ADD', amount: Math.floor(maxWin * 0.05) };
+    // Estimate what bank will be at multiplier time
+    // Work backwards: after mult we want bank that * mult + remaining adds = maxWin
+    const postMultAddsNeeded = Math.floor(deficit * 0.3); // Leave some for after mult
+    const targetBeforeMult = Math.floor((maxWin - postMultAddsNeeded) / multValue);
+    const neededBeforeMult = targetBeforeMult - currentBank;
+    
+    // Distribute before multiplier with variance
+    if (picksBeforeMult > 0) {
+      const baseAmount = Math.floor(neededBeforeMult / picksBeforeMult);
+      for (let i = currentPickIndex; i < multPos; i++) {
+        const variance = 0.5 + Math.random();
+        sequence[i] = { t: 'ADD', amount: Math.floor(baseAmount * variance) };
+      }
     }
     
-    // Calculate what final add needs to be
-    let simBank = bankAfterMult;
-    for (let i = currentPickIndex + 1; i < maxPicks - 1; i++) {
-      simBank += sequence[i]?.amount || 0;
+    // Calculate actual bank at mult point
+    let simBank = currentBank;
+    for (let i = currentPickIndex; i <= multPos; i++) {
+      const o = sequence[i];
+      if (o.t === 'ADD') simBank += o.amount || 0;
+      else if (o.t === 'MULT') simBank = Math.floor(simBank * (o.value || 1));
     }
     
-    sequence[maxPicks - 1] = { t: 'ADD', amount: Math.max(0, maxWin - simBank) };
-  } else {
-    // Bank is already substantial, distribute remaining to reach maxWin
-    const deficit = maxWin - currentBank;
-    const addPerPick = Math.floor(deficit / remaining);
+    // Distribute remaining after multiplier
+    const remainingDeficit = maxWin - simBank;
+    if (picksAfterMult > 0) {
+      const baseAmount = Math.floor(remainingDeficit / picksAfterMult);
+      for (let i = multPos + 1; i < maxPicks - 1; i++) {
+        const variance = 0.4 + Math.random() * 1.2;
+        sequence[i] = { t: 'ADD', amount: Math.floor(baseAmount * variance) };
+      }
+    }
     
+    // Final adjustment
+    simBank = currentBank;
     for (let i = currentPickIndex; i < maxPicks - 1; i++) {
-      sequence[i] = { t: 'ADD', amount: addPerPick };
+      const o = sequence[i];
+      if (o.t === 'ADD') simBank += o.amount || 0;
+      else if (o.t === 'MULT') simBank = Math.floor(simBank * (o.value || 1));
+    }
+    sequence[maxPicks - 1] = { t: 'ADD', amount: Math.max(0, maxWin - simBank) };
+    
+  } else {
+    // No multiplier needed - just distribute remaining adds with variance
+    const basePerPick = Math.floor(deficit / remaining);
+    
+    // Generate varied amounts
+    const amounts: number[] = [];
+    let totalAssigned = 0;
+    
+    for (let i = 0; i < remaining - 1; i++) {
+      const variance = 0.4 + Math.random() * 1.2;
+      const amount = Math.floor(basePerPick * variance);
+      amounts.push(amount);
+      totalAssigned += amount;
     }
     
-    // Final pick gets the remainder
-    const simBank = currentBank + addPerPick * (remaining - 1);
-    sequence[maxPicks - 1] = { t: 'ADD', amount: Math.max(0, maxWin - simBank) };
+    // Last amount gets the exact remainder
+    amounts.push(Math.max(0, deficit - totalAssigned));
+    
+    // Shuffle for natural feel (but keep last element as final)
+    const toShuffle = amounts.slice(0, -1);
+    for (let i = toShuffle.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [toShuffle[i], toShuffle[j]] = [toShuffle[j], toShuffle[i]];
+    }
+    
+    // Apply shuffled amounts
+    for (let i = 0; i < remaining - 1; i++) {
+      sequence[currentPickIndex + i] = { t: 'ADD', amount: toShuffle[i] };
+    }
+    sequence[maxPicks - 1] = { t: 'ADD', amount: amounts[amounts.length - 1] };
   }
   
   return sequence;

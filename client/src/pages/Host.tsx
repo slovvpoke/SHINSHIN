@@ -101,10 +101,10 @@ export default function Host() {
           animate={{ scale: 1, opacity: 1 }}
         >
           <h1 className="text-2xl font-bold text-cs-gold text-center mb-6">
-            🎮 Host Panel
+            Host Panel
           </h1>
           <p className="text-gray-400 text-center mb-6">
-            Панель управления Mines Giveaway
+            Панель управления
           </p>
           
           <div className="space-y-4">
@@ -148,8 +148,8 @@ export default function Host() {
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-cs-gold">🎮 Host Panel</h1>
-            <p className="text-gray-400">Управление Mines Giveaway</p>
+            <h1 className="text-3xl font-bold text-cs-gold">Host Panel</h1>
+            <p className="text-gray-400">Управление</p>
           </div>
           <button
             onClick={logout}
@@ -178,7 +178,7 @@ export default function Host() {
           <div className="space-y-6">
             {/* Connection Status */}
             <div className="bg-cs-dark/80 rounded-xl p-6 border border-cs-gold/30">
-              <h2 className="text-lg font-bold text-white mb-4">📡 Статус</h2>
+              <h2 className="text-lg font-bold text-white mb-4">Статус</h2>
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-gray-400">Сервер:</span>
@@ -207,7 +207,7 @@ export default function Host() {
             
             {/* Configuration */}
             <div className="bg-cs-dark/80 rounded-xl p-6 border border-cs-gold/30">
-              <h2 className="text-lg font-bold text-white mb-4">⚙️ Настройки</h2>
+              <h2 className="text-lg font-bold text-white mb-4">Настройки</h2>
               <div className="space-y-4">
                 <div>
                   <label className="text-gray-400 text-sm block mb-1">
@@ -253,9 +253,9 @@ export default function Host() {
             {/* Force Max Win Controls */}
             {forceEnabled && (
               <div className="bg-cs-dark/80 rounded-xl p-6 border border-cs-orange/50">
-                <h2 className="text-lg font-bold text-cs-orange mb-4">⚡ Force Max Win</h2>
+                <h2 className="text-lg font-bold text-cs-orange mb-4">Force Max Win</h2>
                 <p className="text-gray-400 text-sm mb-4">
-                  Эти кнопки гарантируют максимальный выигрыш. Используйте осторожно!
+                  Гарантированный максимальный выигрыш.
                 </p>
                 <div className="space-y-3">
                   <button
@@ -266,7 +266,7 @@ export default function Host() {
                     disabled={gameState?.forceMode !== 'NONE'}
                     className="w-full bg-cs-orange/20 text-cs-orange px-4 py-3 rounded-lg hover:bg-cs-orange/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    🎯 Force Max Win (Следующий раунд)
+                    Следующий раунд
                   </button>
                   <button
                     onClick={() => {
@@ -276,14 +276,14 @@ export default function Host() {
                     disabled={gameState?.status !== 'PLAYING'}
                     className="w-full bg-cs-red/20 text-cs-red px-4 py-3 rounded-lg hover:bg-cs-red/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    ⚡ Force Max Win (Этот раунд СЕЙЧАС)
+                    Этот раунд
                   </button>
                   {gameState?.forceMode !== 'NONE' && (
                     <button
                       onClick={cancelForce}
                       className="w-full bg-gray-600/20 text-gray-400 px-4 py-2 rounded-lg hover:bg-gray-600/30 text-sm"
                     >
-                      ✕ Отменить Force Mode
+                      Отменить
                     </button>
                   )}
                 </div>
@@ -300,7 +300,7 @@ export default function Host() {
           <div className="space-y-6">
             {/* Current Round Info */}
             <div className="bg-cs-dark/80 rounded-xl p-6 border border-cs-gold/30">
-              <h2 className="text-lg font-bold text-white mb-4">🎲 Текущий раунд</h2>
+              <h2 className="text-lg font-bold text-white mb-4">Текущий раунд</h2>
               <div className="grid grid-cols-2 gap-4 text-center">
                 <div className="bg-cs-darker rounded-lg p-4">
                   <div className="text-gray-400 text-sm">Победитель</div>
@@ -334,7 +334,7 @@ export default function Host() {
             
             {/* Actions */}
             <div className="bg-cs-dark/80 rounded-xl p-6 border border-cs-gold/30">
-              <h2 className="text-lg font-bold text-white mb-4">🎮 Действия</h2>
+              <h2 className="text-lg font-bold text-white mb-4">Действия</h2>
               <div className="space-y-3">
                 {/* Pick Winner */}
                 <div className="flex gap-2">
@@ -350,7 +350,7 @@ export default function Host() {
                     disabled={!gameState?.participants.length && !manualWinner}
                     className="bg-cs-purple/20 text-cs-purple px-4 py-2 rounded-lg hover:bg-cs-purple/30 disabled:opacity-50"
                   >
-                    🎯 Выбрать
+                    Выбрать
                   </button>
                 </div>
                 <button
@@ -358,20 +358,20 @@ export default function Host() {
                   disabled={!gameState?.participants.length}
                   className="w-full bg-cs-cyan/20 text-cs-cyan px-4 py-3 rounded-lg hover:bg-cs-cyan/30 disabled:opacity-50"
                 >
-                  🎲 Случайный победитель
+                  Случайный победитель
                 </button>
                 <button
                   onClick={handleStartRound}
                   disabled={!gameState?.winner || gameState?.status === 'PLAYING'}
                   className="w-full bg-cs-green/20 text-cs-green px-4 py-3 rounded-lg hover:bg-cs-green/30 disabled:opacity-50"
                 >
-                  ▶ Начать раунд
+                  Начать раунд
                 </button>
                 <button
                   onClick={resetGame}
                   className="w-full bg-cs-red/20 text-cs-red px-4 py-3 rounded-lg hover:bg-cs-red/30"
                 >
-                  🔄 Сбросить игру
+                  Сбросить игру
                 </button>
               </div>
             </div>
@@ -381,7 +381,7 @@ export default function Host() {
           <div className="bg-cs-dark/80 rounded-xl p-6 border border-cs-gold/30">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-bold text-white">
-                👥 Участники ({gameState?.participants.length || 0})
+                Участники ({gameState?.participants.length || 0})
               </h2>
               <button
                 onClick={clearParticipants}
@@ -402,11 +402,10 @@ export default function Host() {
                   key={`${p}-${i}`}
                   className={`px-3 py-2 rounded-lg text-sm ${
                     p === gameState.winner
-                      ? 'bg-cs-gold/20 text-cs-gold'
+                      ? 'bg-cs-gold/20 text-cs-gold border border-cs-gold/50'
                       : 'bg-cs-darker text-gray-300'
                   }`}
                 >
-                  {p === gameState.winner && '👑 '}
                   {p}
                 </div>
               ))}
@@ -433,7 +432,7 @@ export default function Host() {
               onClick={(e) => e.stopPropagation()}
             >
               <h2 className="text-xl font-bold text-cs-orange mb-4">
-                ⚠️ Подтверждение Force Max Win
+                Подтверждение Force Max Win
               </h2>
               <p className="text-gray-400 mb-4">
                 {forceMode === 'NEXT_ROUND'

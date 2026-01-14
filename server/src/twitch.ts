@@ -8,6 +8,18 @@ let participantCallback: ParticipantCallback | null = null;
 let chatMessageCallback: ChatMessageCallback | null = null;
 let isConnected = false;
 
+// Bot usernames to filter from chat
+const BOT_USERNAMES = [
+  'nightbot',
+  'streamelements',
+  'streamlabs',
+  'moobot',
+  'fossabot',
+  'wizebot',
+  'deepbot',
+  'phantombot',
+];
+
 // Get Twitch connection config from environment
 function getConfig(): tmi.Options {
   const channel = process.env.TWITCH_CHANNEL || 'shinneeshinn';
@@ -61,6 +73,12 @@ export async function initTwitch(
       if (self) return;
       
       const username = tags['display-name'] || tags.username || 'anonymous';
+      const usernameLower = username.toLowerCase();
+      
+      // Filter out bot messages
+      if (BOT_USERNAMES.includes(usernameLower)) {
+        return;
+      }
       
       // Send all messages to chat callback
       if (chatMessageCallback) {

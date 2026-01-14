@@ -11,19 +11,7 @@ export function StatusBar() {
   return (
     <div className="status-bar">
       {/* Left: Stream info */}
-      <div className="status-card">
-        <div className="status-card__header">
-          <div className="status-card__avatar">⭐</div>
-          <div>
-            <div className="status-card__name">shinneeshinn</div>
-            <div className="status-card__label">MINES GIVEAWAY</div>
-          </div>
-        </div>
-        <div className="status-card__twitch">
-          <span className={`status-dot ${twitchStatus?.connected ? 'status-dot--online' : 'status-dot--offline'}`} />
-          <span>{twitchStatus?.connected ? `Twitch: ${twitchStatus.channel}` : 'Twitch: отключен'}</span>
-        </div>
-      </div>
+      <div>      </div>
       
       {/* Center: Status banner */}
       {status === 'IDLE' && (

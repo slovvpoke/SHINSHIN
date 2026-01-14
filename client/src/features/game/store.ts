@@ -30,6 +30,7 @@ export interface OpenedTile {
 export interface GameState {
   roundId: string | null;
   winner: string | null;
+  winnerSelectedAt?: number; // Timestamp when winner was selected
   bank: number;
   maxWin: number;
   targetAvg: number;
@@ -87,6 +88,7 @@ interface GameStore {
   pickWinner: (manual?: string) => Promise<{ ok: boolean; winner?: string; error?: string }>;
   startRound: () => Promise<{ ok: boolean; error?: string }>;
   resetGame: () => Promise<void>;
+  playerResetGame: () => Promise<{ ok: boolean; error?: string }>;
   clearParticipants: () => Promise<void>;
   clickTile: (tileIndex: number) => Promise<{ ok: boolean; outcome?: Outcome; error?: string }>;
   forceMaxWin: (mode: 'NEXT_ROUND' | 'THIS_ROUND', password: string) => Promise<{ ok: boolean; error?: string }>;
@@ -143,15 +145,21 @@ export const useGameStore = create<GameStore>((set) => ({
   
   pickWinner: async (manual) => {
     return new Promise((resolve) => {
-      socket.emit('host:pickWinner', { manual }, (res: any) => {
-        resolve(res);
-      });
+      if (manual) {
+        socket.emit('host:pickWinner', { manual }, (res: any) => {
+          resolve(res);
+        });
+      } else {
+        socket.emit('player:pickWinner', (res: any) => {
+          resolve(res);
+        });
+      }
     });
   },
   
   startRound: async () => {
     return new Promise((resolve) => {
-      socket.emit('host:startRound', (res: any) => {
+      socket.emit('player:startRound', (res: any) => {
         resolve(res);
       });
     });
@@ -160,6 +168,14 @@ export const useGameStore = create<GameStore>((set) => ({
   resetGame: async () => {
     return new Promise((resolve) => {
       socket.emit('host:reset', () => resolve());
+    });
+  },
+  
+  playerResetGame: async () => {
+    return new Promise((resolve) => {
+      socket.emit('player:resetGame', (res: any) => {
+        resolve(res);
+      });
     });
   },
   
@@ -218,11 +234,9 @@ export function initSocketListeners() {
   
   socket.on('connect', () => {
     setConnected(true);
-    // Request current state
     socket.emit('game:getState', (state: GameState) => {
       if (state) setGameState(state);
     });
-    // Check if force is enabled
     fetch('/api/force-enabled')
       .then(res => res.json())
       .then(data => setForceEnabled(data.enabled))
@@ -248,5 +262,16 @@ export function initSocketListeners() {
   
   socket.on('chat:message', (data: { username: string; message: string; ts: number }) => {
     addChatMessage(data);
+  });
+  
+  // Handle participant joined - update participants list immediately
+  socket.on('participant:joined', (data: { username: string }) => {
+    const state = useGameStore.getState().gameState;
+    if (state && !state.participants.includes(data.username)) {
+      setGameState({
+        ...state,
+        participants: [...state.participants, data.username],
+      });
+    }
   });
 }
