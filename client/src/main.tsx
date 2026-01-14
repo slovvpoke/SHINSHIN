@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Play from './pages/Play';
 import './index.css';
 
-const HostPanel = lazy(() => import('./pages/Host'));
+const P = lazy(() => import('./pages/Host'));
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -13,7 +13,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route path="/play" element={<Play />} />
         <Route path="/h" element={
           <Suspense fallback={<div style={{ background: '#08080c', minHeight: '100vh' }} />}>
-            <HostPanel />
+            <P />
           </Suspense>
         } />
         <Route path="*" element={<Navigate to="/play" replace />} />

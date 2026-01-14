@@ -5,6 +5,9 @@ import { useGameStore, type Outcome } from './store';
 const rerollSound = new Audio('/assets/oh-no-cringe.mp3');
 rerollSound.volume = 0.6;
 
+const pickSound = new Audio('/assets/sound-effect-they-see-me-rolling-audiotrimmer.mp3');
+pickSound.volume = 0.5;
+
 function formatOutcome(outcome: Outcome): { text: string; className: string } {
   switch (outcome.t) {
     case 'ADD':
@@ -51,8 +54,10 @@ export function GameBoard() {
     setIsRolling(true);
     setShowWinnerActions(false);
     
-    // Animate through random names in the circle
-    const rollDuration = 2000;
+    pickSound.currentTime = 0;
+    pickSound.play().catch(() => {});
+    
+    const rollDuration = (pickSound.duration || 2) * 1000;
     const rollInterval = 80;
     let elapsed = 0;
     
@@ -66,7 +71,6 @@ export function GameBoard() {
       }
     }, rollInterval);
     
-    // Actually pick winner after animation
     setTimeout(async () => {
       if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
       const result = await pickWinner();
@@ -111,7 +115,7 @@ export function GameBoard() {
     rerollSound.currentTime = 0;
     rerollSound.play().catch(() => {});
     
-    const rollDuration = 1500;
+    const rollDuration = (rerollSound.duration || 1.5) * 1000;
     const rollInterval = 80;
     let elapsed = 0;
     

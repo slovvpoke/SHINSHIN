@@ -2,7 +2,6 @@ import { useGameStore } from './store';
 
 export function StatusBar() {
   const gameState = useGameStore((s) => s.gameState);
-  const twitchStatus = useGameStore((s) => s.twitchStatus);
   
   if (!gameState) return null;
   
